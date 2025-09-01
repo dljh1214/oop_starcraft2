@@ -1,119 +1,156 @@
 from abc import abstractmethod
 from collections import deque
+import heapq
 import time
 import threading
-class game:
+class Game:
     current_game = None
-    class propertyM:
+############-----------------------PROPERTIES----------------###############################
+    class PropertyM:
         def __init__(self,object):
             self.object = object
-            self.object.properties = []
+            self.object.property = []
         def tick(self):
-            for i in self.object.properties:
+            for i in self.object.property:
                 i.tick()
-    class properties:
+    class Properties:
         def __init__(self,object):
             self.object = object
-            self.object.properties.append(self)
-    class self_regenerate(properties):
-        health_per_tick = 10
+            self.object.property.append(self)
+    class LockDown(Properties):
+        needed_energy = 100
+        stun_tick = 2000
+        def __init__(self,object):
+            super().__init__(object)
+        def lockdown(self,target):
+            if self.object.energy > Game.LockDown.needed_energy:
+                target.get_stunned(Game.current_game.get_tick()+Game.LockDown.stun_tick)
+                self.object.energy-=Game.LockDown.needed_energy
+        def tick(self):
+            pass
+    class SelfRegenerate(Properties):
+        health_per_tick = 0.5
         def __init__(self,object):
             super().__init__(object)
         def tick(self):
-            self.object.hp+=game.self_regenerate.health_per_tick
-    class cloakable(properties):
-        energy_per_tick = 5
+            if self.object.hp < self.object.max_hp:
+                self.object.heal(Game.SelfRegenerate.health_per_tick)
+    class SelfRecharge(Properties):
+        energy_per_tick = 0.035
         def __init__(self,object):
             super().__init__(object)
-            object.cloaked = False
+        def tick(self):
+            self.object.charge(Game.SelfRecharge.energy_per_tick)
+    class Cloakable(Properties):
+        energy_per_tick = 0.1
+        def __init__(self,object):
+            super().__init__(object)
+            self.object.cloaked = False
         def cloak(self):
             self.object.cloaked = True
         def uncloak(self):
             self.object.cloaked = False
         def tick(self):
-            if self.object.cloaked == True:
-                self.object.energy-=game.cloakable.energy_per_tick
-                if self.object.energy < game.cloakable.energy_per_tick:
+            if self.object.cloaked:
+                if self.object.energy < Game.Cloakable.energy_per_tick:
                     self.uncloak()
+                else:
+                    self.object.energy -= Game.Cloakable.energy_per_tick
+######-------------UNITS--------############################
     class Unit:
-        def __init__(self, hp=100, x=0, y=0):
+        def __init__(self, hp=100, x=0, y=0,energy=100):
+            self.max_hp = hp
             self.hp = hp
             self.coordinate = [x, y]
             self.stunned = False
-            game.current_game.units.append(self)
-            self.propM = game.propertyM(self)
+            self.energy = energy
+            Game.current_game.units.append(self)
+            self.alive = True
+            self.propM = Game.PropertyM(self)
+            self.cc = []
 
         def move(self, x, y):
-            if not self.stunned:
+            if not self.stunned and self.alive:
                 self.coordinate = [x, y]
-
         @abstractmethod
-        def attack(self):
-            pass
-
+        def attack(self,target):
+            if self.stunned or not self.alive:
+                print("failed to attack")
+                return
+            target.get_damage(10)
+        def get_damage(self,amount):
+            self.hp-=amount
+        def heal(self,amount):
+            self.hp+=amount
+            if self.hp > self.max_hp:
+                self.hp = self.max_hp
+        def charge(self,amount):
+            self.energy+=amount
+        def get_stunned(self,end_tick):
+            self.stunned = True
+            heapq.heappush(end_tick,"self.stunned=False")
+        def out_stunned(self):
+            self.stunned = False
         def tick(self):
+            if self.hp <= 0:
+                Game.current_game.dead_units.append(self)
+                self.alive = False
+                return
+            if self.cc:
+                if self.cc[0][0] >= g.get_tick():
+                    _,k = heapq.heappop(self.cc)
+                    exec(k)
             self.propM.tick()
 
     class terran_marine(Unit):
-        def attack(self):
-            if not self.stunned:
-                print('가우스 소총 발사!')
-        def tick(self):
-            pass
+        def attack(self,target):
+            super().attack(target)
+            print('가우스 소총 발사!')
 
     class zerg_zergling(Unit):
-        def __init__(self,hp = 100, x=0,y=0):
-            super().__init__(hp,x,y)
-            self.regenM = game.self_regenerate(self)
-        def attack(self):
-            if not self.stunned:
-                print('발톱으로 할퀴기!')
+        def __init__(self,hp = 100, x=0,y=0,energy = 100):
+            super().__init__(hp,x,y,energy)
+            self.regenM = Game.SelfRegenerate(self)
+        def attack(self,target):
+            super().attack(target)
+            print('발톱으로 할퀴기!')
 
     class protoss_zealot(Unit):
-        def attack(self):
-            if not self.stunned:
-                print('사이오닉 검으로 공격!')
+        def attack(self,target):
+            super().attack(target)
+            print('사이오닉 검으로 공격!')
 
 
     class terran_ghost(Unit):
-        stun_time = 131
-        needed_energy = 100.0
-
-        def __init__(self, hp=100, x=0, y=0, energy=50.0):
-            super().__init__(hp, x, y)
-            self.energy = energy
-            self.begin_tick = deque([])
-            self.cloakM = game.cloakable(self)
-
-        def lockdown(self, target):
-            if self.energy > game.terran_ghost.needed_energy:
-                target.stunned = True
-                self.begin_tick.append((game.current_game.get_tick(),target))
+        def __init__(self, hp=100, x=0, y=0, energy=100.0):
+            super().__init__(hp, x, y,energy)
+            self.cloakM = Game.Cloakable(self)
+            self.ldM = Game.LockDown(self)
+            self.rcM = Game.SelfRecharge(self)
+        def lockdown(self,target):
+            self.ldM.lockdown(target)
         def cloak(self):
             self.cloakM.cloak()
         def tick(self):
-            if self.begin_tick:
-                if game.current_game.get_tick() - self.begin_tick[0][0] >= game.terran_ghost.stun_time:
-                    _,target = self.begin_tick.popleft()
-                    if target in game.current_game.units:
-                        target.stunned = False
-            self.energy+=0.035
-            self.propM.tick()
+            super().tick()
     class terran_wraith(Unit):
         def __init__(self, hp=100, x=0, y=0, energy=50.0):
             super().__init__(hp, x, y)
             self.energy = energy
-            self.cloakM = game.cloakable(self)
+            self.cloakM = Game.Cloakable(self)
         def cloak(self):
             self.cloakM.cloak()
-        def tick(self):
-            self.propM.tick()
+        def uncloak(self):
+            self.cloakM.uncloak()
 
+##################################GAME FEATURES#########################################################################
     def __init__(self):
         self.__tick = 0
         self.units = []
-        game.current_game = self
+        self.dead_units = []
+        Game.current_game = self
         self.act_thread = threading.Thread(target = self._get_user_act,daemon = True)
+        self.act_thread.daemon = True
     def _get_user_act(self):
         while True:
             act = input()
@@ -125,6 +162,9 @@ class game:
     def get_tick(self):
         return self.__tick
     def ex_tick(self):
+        for i in self.dead_units:
+            self.units.remove(i)
+        self.dead_units=[]
         for i in self.units:
             i.tick()
     def game_loop(self):
@@ -134,5 +174,5 @@ class game:
             self.ex_tick()
             time.sleep(1/24)
 
-g = game()
+g = Game()
 g.game_loop()
