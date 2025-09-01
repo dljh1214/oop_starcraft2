@@ -1,5 +1,4 @@
 from abc import abstractmethod
-from collections import deque
 import heapq
 import time
 import threading
@@ -88,7 +87,7 @@ class Game:
             self.energy+=amount
         def get_stunned(self,end_tick):
             self.stunned = True
-            heapq.heappush(end_tick,"self.stunned=False")
+            heapq.heappush(end_tick,self.out_stunned)
         def out_stunned(self):
             self.stunned = False
         def tick(self):
@@ -98,8 +97,8 @@ class Game:
                 return
             if self.cc:
                 if self.cc[0][0] >= g.get_tick():
-                    _,k = heapq.heappop(self.cc)
-                    exec(k)
+                    _,fn = heapq.heappop(self.cc)
+                    fn()
             self.propM.tick()
 
     class terran_marine(Unit):
