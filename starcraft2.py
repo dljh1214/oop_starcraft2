@@ -1,4 +1,3 @@
-from abc import abstractmethod
 import heapq
 import time
 import threading
@@ -16,6 +15,8 @@ class Game:
         def __init__(self,object):
             self.object = object
             self.object.property.append(self)
+        def tick(self):
+            pass
     class LockDown(Properties):
         needed_energy = 100
         stun_tick = 2000
@@ -25,8 +26,8 @@ class Game:
             if self.object.energy > Game.LockDown.needed_energy:
                 target.get_stunned(Game.current_game.get_tick()+Game.LockDown.stun_tick)
                 self.object.energy-=Game.LockDown.needed_energy
-        def tick(self):
-            pass
+            else:
+                print("energy insufficient")
     class SelfRegenerate(Properties):
         health_per_tick = 0.5
         def __init__(self,object):
@@ -71,7 +72,6 @@ class Game:
         def move(self, x, y):
             if not self.stunned and self.alive:
                 self.coordinate = [x, y]
-        @abstractmethod
         def attack(self,target):
             if self.stunned or not self.alive:
                 print("failed to attack")
@@ -87,7 +87,7 @@ class Game:
             self.energy+=amount
         def get_stunned(self,end_tick):
             self.stunned = True
-            heapq.heappush(end_tick,self.out_stunned)
+            heapq.heappush(self.cc,(end_tick,self.out_stunned))
         def out_stunned(self):
             self.stunned = False
         def tick(self):
@@ -96,7 +96,7 @@ class Game:
                 self.alive = False
                 return
             if self.cc:
-                if self.cc[0][0] >= g.get_tick():
+                if self.cc[0][0] <= g.get_tick():
                     _,fn = heapq.heappop(self.cc)
                     fn()
             self.propM.tick()
@@ -134,7 +134,7 @@ class Game:
             super().tick()
     class terran_wraith(Unit):
         def __init__(self, hp=100, x=0, y=0, energy=50.0):
-            super().__init__(hp, x, y)
+            super().__init__(hp, x, y,energy)
             self.energy = energy
             self.cloakM = Game.Cloakable(self)
         def cloak(self):
