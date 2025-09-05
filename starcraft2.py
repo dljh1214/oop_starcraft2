@@ -1,20 +1,21 @@
 import heapq
 import time
 import threading
+from collections import deque
 class Game:
     current_game = None
 ############-----------------------PROPERTIES----------------###############################
     class PropertyM:
         def __init__(self,object):
             self.object = object
-            self.object.property = []
+            self.object.props = []
         def tick(self):
-            for i in self.object.property:
+            for i in self.object.props:
                 i.tick()
     class Properties:
         def __init__(self,object):
             self.object = object
-            self.object.property.append(self)
+            self.object.props.append(self)
         def tick(self):
             pass
     class LockDown(Properties):
@@ -68,6 +69,7 @@ class Game:
             self.alive = True
             self.propM = Game.PropertyM(self)
             self.cc = []
+            self.comp_counter = 0
 
         def move(self, x, y):
             if not self.stunned and self.alive:
@@ -87,7 +89,8 @@ class Game:
             self.energy+=amount
         def get_stunned(self,end_tick):
             self.stunned = True
-            heapq.heappush(self.cc,(end_tick,self.out_stunned))
+            heapq.heappush(self.cc,(end_tick,self.comp_counter,self.out_stunned))
+            self.comp_counter+=1
         def out_stunned(self):
             self.stunned = False
         def tick(self):
@@ -96,7 +99,7 @@ class Game:
                 self.alive = False
                 return
             if self.cc:
-                if self.cc[0][0] <= g.get_tick():
+                if self.cc[0][0] <= Game.current_game.get_tick():
                     _,fn = heapq.heappop(self.cc)
                     fn()
             self.propM.tick()
@@ -135,7 +138,6 @@ class Game:
     class terran_wraith(Unit):
         def __init__(self, hp=100, x=0, y=0, energy=50.0):
             super().__init__(hp, x, y,energy)
-            self.energy = energy
             self.cloakM = Game.Cloakable(self)
         def cloak(self):
             self.cloakM.cloak()
@@ -150,17 +152,21 @@ class Game:
         Game.current_game = self
         self.act_thread = threading.Thread(target = self._get_user_act,daemon = True)
         self.act_thread.daemon = True
+        self.act_q = deque([])
     def _get_user_act(self):
         while True:
             act = input()
             if act:
-                try:
-                    exec(act)
-                except:
-                    print("wrong argument")
+                self.act_q.append(act)
     def get_tick(self):
         return self.__tick
     def ex_tick(self):
+        while self.act_q:
+            act = self.act_q.popleft()
+            try:
+                exec(act)
+            except Exception as e:
+                print('invalid argument',e)
         for i in self.dead_units:
             self.units.remove(i)
         self.dead_units=[]
